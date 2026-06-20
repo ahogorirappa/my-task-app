@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AIタスクプロセッサー Pro</title>
+    <style>
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            background-color: #f5f7fa;
+            margin: 0;
+            padding: 40px 20px;
+            color: #333;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: #ffffff;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.05);
+        }
+        h1 {
+            text-align: center;
+            color: #4A90E2;
+            margin-bottom: 30px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #555;
+        }
+        input[type="text"], textarea {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ccd1d9;
+            border-radius: 6px;
+            box-sizing: border-box;
+            font-size: 14px;
+        }
+        button {
+            width: 100%;
+            padding: 14px;
+            background-color: #4A90E2;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        button:hover {
+            background-color: #357ABD;
+        }
+        .loading {
+            text-align: center;
+            display: none;
+            color: #666;
+            margin-top: 20px;
+            font-style: italic;
+        }
+        .result-box {
+            margin-top: 30px;
+            padding: 20px;
+            background: #f8fafc;
+            border-left: 5px solid #4A90E2;
+            border-radius: 6px;
+            white-space: pre-wrap;
+            display: none;
+            line-height: 1.6;
+        }
+        /* ダウンロードボタン用のスタイル */
+        .download-box {
+            margin-top: 20px;
+            display: none;
+            text-align: center;
+        }
+        .btn-download {
+            width: auto;
+            display: inline-block;
+            padding: 10px 15px;
+            font-size: 14px;
+            margin: 5px;
+        }
+        .btn-txt { background-color: #6c757d; }
+        .btn-txt:hover { background-color: #5a6268; }
+        .btn-docx { background-color: #2b579a; }
+        .btn-docx:hover { background-color: #1e3d6b; }
+        .btn-xlsx { background-color: #217346; }
+        .btn-xlsx:hover { background-color: #164f30; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>📝 AIタスクプロセッサー Pro</h1>
+    
+    <div class="form-group">
+        <label for="title">タスク名</label>
+        <input type="text" id="title" placeholder="例: 部屋の大掃除をする">
+    </div>
+    
+    <div class="form-group">
+        <label for="description">詳細やメモ</label>
+        <textarea id="description" rows="4" placeholder="例: 今週末までに終わらせたい。"></textarea>
+    </div>
+    
+    <button id="submit-btn">Geminiにタスクを処理してもらう</button>
+    
+    <div id="loading" class="loading">⏳ Geminiがタスクを分析中...</div>
+    <div id="result" class="result-box"></div>
+    
+    <div id="download-box" class="download-box">
+        <button id="btn-txt" class="btn-download btn-txt">📄 テキスト保存</button>
+        <button id="btn-docx" class="btn-download btn-docx">📝 Word保存</button>
+        <button id="btn-xlsx" class="btn-download btn-xlsx">📊 Excel保存</button>
+    </div>
+</div>
+
+<script>
+    // 分析結果を一時的に保存しておく変数
+    let currentTitle = "";
+    let currentResult = "";
+
+    document.getElementById('submit-btn').addEventListener('click', async () => {
+        const title = document.getElementById('title').value;
+        const description = document.getElementById('description').value;
+        const resultBox = document.getElementById('result');
+        const downloadBox = document.getElementById('download-box');
+        const loading = document.getElementById('loading');
+        
+        if (!title) {
+            alert('タスク名を入力してください！');
+            return;
+        }
+        
+        resultBox.style.display = 'none';
+        downloadBox.style.display = 'none';
+        loading.style.display = 'block';
+        
+        try {
+            const response = await fetch('/process-task', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title, description })
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok) {
+                resultBox.innerText = data.result;
+                resultBox.style.display = 'block';
+                
+                // データを保存してダウンロードボタンを表示
+                currentTitle = title;
+                currentResult = data.result;
+                downloadBox.style.display = 'block';
+            } else {
+                alert('エラーが発生しました: ' + data.detail);
+            }
+        } catch (error) {
+            alert('サーバーとの通信に失敗しました。');
+        } finally {
+            loading.style.display = 'none';
+        }
+    });
+
+    // ファイルをダウンロードする共通の処理
+    async function downloadFile(type, extension) {
+        try {
+            const response = await fetch(`/download/${type}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title: currentTitle, result: currentResult })
+            });
+            
+            if (response.ok) {
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `タスク_${currentTitle}.${extension}`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(url);
+            } else {
+                alert('ファイルの作成に失敗しました。');
+            }
+        } catch (error) {
+            alert('通信エラーが発生しました。');
+        }
+    }
+
+    document.getElementById('btn-txt').addEventListener('click', () => downloadFile('txt', 'txt'));
+    document.getElementById('btn-docx').addEventListener('click', () => downloadFile('docx', 'docx'));
+    document.getElementById('btn-xlsx').addEventListener('click', () => downloadFile('xlsx', 'xlsx'));
+</script>
+
+</body>
+</html>
